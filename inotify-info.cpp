@@ -96,6 +96,9 @@ struct procinfo_t
     // Executable basename
     std::string appname;
 
+    // Command line
+    std::string cmdline;
+
     // Inotify fdset filenames
     std::vector< std::string > fdset_filenames;
 
@@ -272,6 +275,29 @@ static uint64_t get_token_val( const char *line, const char *token )
     const char *str = strstr( line, token );
 
     return str ? strtoull( str + strlen( token ), nullptr, 16 ) : 0;
+}
+
+static std::string get_cmdline(const char *pathname)
+{
+    FILE *fp = fopen( pathname, "r" );
+    
+    if ( fp )
+    {
+        char line_buf[ 256 ];
+        if (size_t len=fread( line_buf, sizeof(char), sizeof( line_buf ) - 1, fp ))
+        {
+            for(size_t i=0;i<len;i++)
+            {
+                if(line_buf[i]=='\0')
+                    line_buf[i]=' ';
+
+            }
+            return std::string(line_buf);
+        }
+        
+        fclose( fp );
+    }
+    return std::string();
 }
 
 static uint32_t inotify_parse_fdinfo_file( procinfo_t &procinfo, const char *fdset_name )
@@ -672,8 +698,11 @@ static bool init_inotify_proclist( std::vector< procinfo_t > &inotify_proclist )
 
             std::string executable = string_format( "/proc/%d/exe", procinfo.pid );
             std::string status = string_format( "/proc/%d/status", procinfo.pid );
+            std::string cmdline = string_format("/proc/%d/cmdline", procinfo.pid );
+
             procinfo.uid = get_uid( status.c_str() );
             procinfo.executable = get_link_name( executable.c_str() );
+            procinfo.cmdline = get_cmdline(cmdline.c_str());
             if ( !procinfo.executable.empty() )
             {
                 procinfo.appname = basename( procinfo.executable.c_str() );
@@ -769,12 +798,12 @@ static void print_inotify_proclist( std::vector< procinfo_t > &inotify_proclist 
 
         str_format_uint32(watches_str, procinfo.watches);
 
-        printf( "%*d %-*d %s%-*s%s %*s %*u\n",
+        printf( "%*d %-*d %s%-*s%s %*s %*u %s\n",
             lenPid, procinfo.pid,
             lenUid, procinfo.uid,
             BYELLOW, lenApp, procinfo.appname.c_str(), RESET,
             lenWatches, watches_str,
-            lenInstances, procinfo.instances );
+            lenInstances, procinfo.instances, procinfo.cmdline.c_str() );
 
         if ( g_verbose > 1 )
         {
