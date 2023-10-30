@@ -58,6 +58,7 @@
 
 static int g_verbose = 0;
 static size_t g_numthreads = 32;
+static int g_userid = -1;
 
 static char thousands_sep = ',';
 
@@ -794,6 +795,8 @@ static void print_inotify_proclist( std::vector< procinfo_t > &inotify_proclist 
 
     for ( procinfo_t &procinfo : inotify_proclist )
     {
+        if(g_userid != -1 && procinfo.uid != (uid_t) g_userid)
+            continue;
         char watches_str[16];
 
         str_format_uint32(watches_str, procinfo.watches);
@@ -1078,6 +1081,7 @@ static void print_usage( const char *appname )
     printf( "Usage: %s [--threads=##] [appname | pid...]\n", appname );
     printf( "    [-vv]\n" );
     printf( "    [-?|-h|--help]\n" );
+    printf( "    [-u uid]\n" );
 
     exit( -1 );
 }
@@ -1097,7 +1101,7 @@ static void parse_cmdline( int argc, char **argv, std::vector< std::string > &cm
 
     int c;
     int opt_ind = 0;
-    while ( ( c = getopt_long( argc, argv, "m:s:?hv", long_opts, &opt_ind ) ) != -1 )
+    while ( ( c = getopt_long( argc, argv, "u:m:s:?hv", long_opts, &opt_ind ) ) != -1 )
     {
         switch ( c )
         {
@@ -1119,6 +1123,12 @@ static void parse_cmdline( int argc, char **argv, std::vector< std::string > &cm
             break;
         case 'v':
             g_verbose++;
+            break;
+        case 'u':
+            {
+                int uid = atoi(optarg);
+                g_userid = uid;
+            }
             break;
         case 'h':
         case '?':
@@ -1168,6 +1178,11 @@ int main( int argc, char *argv[] )
     print_inotify_limits();
     print_separator();
 
+    if(g_userid != -1)
+    {
+        printf( "Only process connected to %d:\n", g_userid);
+    }
+
     if ( init_inotify_proclist( inotify_proclist ) )
     {
         uint32_t total_watches = 0;
@@ -1177,13 +1192,15 @@ int main( int argc, char *argv[] )
         for ( procinfo_t &procinfo : inotify_proclist )
         {
             procinfo.in_cmd_line = is_proc_in_cmdline_applist( procinfo, cmdline_applist );
-
-            total_watches += procinfo.watches;
-            total_instances += procinfo.instances;
+            if(g_userid==-1 || procinfo.uid == (uid_t) g_userid)
+            {
+                total_watches += procinfo.watches;
+                total_instances += procinfo.instances;
+            }
         }
 
         print_inotify_proclist( inotify_proclist );
-        print_separator();
+        print_separator();        
 
         printf( "Total inotify Watches:   %s%u%s\n", BGREEN, total_watches, RESET );
         printf( "Total inotify Instances: %s%u%s\n", BGREEN, total_instances, RESET );
